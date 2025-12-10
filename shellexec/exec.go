@@ -6,6 +6,15 @@ import (
 	"os/exec"
 )
 
+func ExecPowershellFile(file string) (*string, error) {
+	return RunExec(exec.Command("PowerShell", "-ExecutionPolicy", "Bypass", "-File", file))
+}
+
+func ExecPowershell(cmd string) (*string, error) {
+	// Build PowerShell command
+	return RunExec(exec.Command("PowerShell", "-ExecutionPolicy", "Bypass", "-Command", cmd))
+}
+
 func ExecUnix(cmd string) (*string, error) {
 	return RunExec(exec.Command("sh", "-c", cmd))
 }
