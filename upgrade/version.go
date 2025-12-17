@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// VersionComponents 版本号组件
+// VersionComponents version number components
 type VersionComponents struct {
 	Major int
 	Minor int
@@ -14,25 +14,31 @@ type VersionComponents struct {
 	Pre   string
 }
 
-// parseVersion 解析版本号字符串为组件
+// parseVersion parse version string into components
 func parseVersion(version string) (*VersionComponents, error) {
-	// 移除版本号前缀
-	// 先检查是否以"version"或"Version"开头
-	if strings.HasPrefix(strings.ToLower(version), "version") {
-		version = version[7:] // 跳过"version"这7个字符
+	// Clean version string, remove possible invalid characters
+	version = strings.TrimSpace(version)
+	if idx := strings.Index(version, " "); idx != -1 {
+		// If contains spaces, take the first part
+		version = version[:idx]
 	}
-	// 再移除"v"或"V"前缀
+	// Remove version prefix
+	// First check if starts with "version" or "Version"
+	if strings.HasPrefix(strings.ToLower(version), "version") {
+		version = version[7:] // Skip the 7 characters of "version"
+	}
+	// Then remove "v" or "V" prefix
 	version = strings.TrimPrefix(version, "v")
 	version = strings.TrimPrefix(version, "V")
 
-	// 处理预发布版本
+	// Handle pre-release version
 	pre := ""
 	if idx := strings.IndexAny(version, "-_"); idx != -1 {
 		pre = version[idx+1:]
 		version = version[:idx]
 	}
 
-	// 分割版本号组件
+	// Split version number components
 	parts := strings.Split(version, ".")
 	if len(parts) < 1 || len(parts) > 3 {
 		return nil, fmt.Errorf("invalid version format: %s", version)
@@ -53,7 +59,7 @@ func parseVersion(version string) (*VersionComponents, error) {
 
 	patch := 0
 	if len(parts) > 2 {
-		// 处理可能的构建信息
+		// Handle possible build information
 		patchPart := parts[2]
 		if idx := strings.IndexAny(patchPart, "+_"); idx != -1 {
 			patchPart = patchPart[:idx]
@@ -72,7 +78,7 @@ func parseVersion(version string) (*VersionComponents, error) {
 	}, nil
 }
 
-// compareVersions 比较两个版本号，返回1如果v1 > v2，0如果相等，-1如果v1 < v2
+// compareVersions compare two version numbers, returns 1 if v1 > v2, 0 if equal, -1 if v1 < v2
 func compareVersions(v1, v2 string) (int, error) {
 	vc1, err := parseVersion(v1)
 	if err != nil {
@@ -84,30 +90,30 @@ func compareVersions(v1, v2 string) (int, error) {
 		return 0, err
 	}
 
-	// 比较主版本号
+	// Compare major version
 	if vc1.Major > vc2.Major {
 		return 1, nil
 	} else if vc1.Major < vc2.Major {
 		return -1, nil
 	}
 
-	// 比较次版本号
+	// Compare minor version
 	if vc1.Minor > vc2.Minor {
 		return 1, nil
 	} else if vc1.Minor < vc2.Minor {
 		return -1, nil
 	}
 
-	// 比较补丁版本号
+	// Compare patch version
 	if vc1.Patch > vc2.Patch {
 		return 1, nil
 	} else if vc1.Patch < vc2.Patch {
 		return -1, nil
 	}
 
-	// 比较预发布版本
+	// Compare pre-release version
 	if vc1.Pre == "" && vc2.Pre != "" {
-		return 1, nil // 正式版本高于预发布版本
+		return 1, nil // Release version is higher than pre-release version
 	} else if vc1.Pre != "" && vc2.Pre == "" {
 		return -1, nil
 	} else if vc1.Pre > vc2.Pre {
@@ -119,7 +125,7 @@ func compareVersions(v1, v2 string) (int, error) {
 	return 0, nil
 }
 
-// needsUpgrade 检查是否需要升级
+// needsUpgrade check if upgrade is needed
 func needsUpgrade(currentVersion, latestVersion string) (bool, error) {
 	cmp, err := compareVersions(latestVersion, currentVersion)
 	if err != nil {

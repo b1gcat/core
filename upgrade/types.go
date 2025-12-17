@@ -1,23 +1,27 @@
 package upgrade
 
-// UpgradeOption 升级策略选项
+// UpgradeOption upgrade strategy option
 type UpgradeOption int
 
 const (
-	// UpgradeOptionImmediate 发现新版本立即升级
+	// UpgradeOptionImmediate upgrade immediately when new version is found
 	UpgradeOptionImmediate UpgradeOption = iota
-	// UpgradeOptionDaily 每天定时升级
+	// UpgradeOptionDaily upgrade daily at scheduled time
 	UpgradeOptionDaily
-	// UpgradeOptionSpecified 升级到指定版本
+	// UpgradeOptionSpecified upgrade to specified version
 	UpgradeOptionSpecified
 )
 
-// VersionInfo 版本信息
+// VersionInfo version information
 type VersionInfo struct {
-	Version      string `json:"version"`
-	ReleaseDate  string `json:"release_date"`
-	ReleaseNotes string `json:"release_notes"`
+	Version      string            `json:"version"`
+	ReleaseDate  string            `json:"release_date"`
+	ReleaseNotes string            `json:"release_notes"`
+	UpgradeMap   map[string]string `json:"upgrade_map"` // map of upgrade package names and their hash values
 }
 
-// CallbackFunc 升级确认回调函数类型
+// CallbackFunc upgrade confirmation callback function type
 type CallbackFunc func(newVersion string) bool
+
+// ProgressCallback download progress callback function type
+type ProgressCallback func(downloaded, total int64)
