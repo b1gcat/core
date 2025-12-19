@@ -219,7 +219,7 @@ func (b *Broker) Start() error {
 }
 
 // CreatePolicy creates a new policy
-func (b *Broker) CreatePolicy(name, description string, settings map[string]interface{}) *Policy {
+func (b *Broker) CreatePolicy(name, description string, settings map[string]any) *Policy {
 	policy := &Policy{
 		ID:          fmt.Sprintf("policy-%s", uuid.New().String()),
 		Name:        name,
