@@ -2,6 +2,7 @@ package license
 
 import (
 	"encoding/binary"
+	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -140,6 +141,36 @@ var buildTime string
 // SetExpiration 设置授权的天数 (backward compatible)
 func SetExpiration(days int) {
 	globalConfig.expirationDays = days
+}
+
+// GetRemainingTime 计算并返回授权的剩余时间
+// 如果授权为永久有效，返回0和nil
+// 如果编译时间无法解析，返回0和错误
+// 如果授权已过期，返回负的duration表示过期的时间
+func (cfg *Config) GetRemainingTime() (time.Duration, error) {
+	if cfg.expirationDays <= 0 {
+		// 授权天数未设置，默认为永久有效
+		return 0, nil
+	}
+
+	// 解析编译时间
+	buildSec, err := strconv.ParseInt(buildTime, 10, 64)
+	if err != nil {
+		// 无法解析编译时间
+		return 0, fmt.Errorf("无法解析编译时间: %w", err)
+	}
+
+	// 获取当前时间（优先使用NTP时间）
+	now := cfg.getNTPTime()
+	buildTimeObj := time.Unix(buildSec, 0)
+
+	// 计算过期时间
+	expirationTime := buildTimeObj.AddDate(0, 0, cfg.expirationDays)
+
+	// 计算剩余时间
+	remaining := expirationTime.Sub(now)
+
+	return remaining, nil
 }
 
 // Check 检查授权是否有效
