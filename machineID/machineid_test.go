@@ -20,3 +20,11 @@ func TestGetMachineID(t *testing.T) {
 
 	t.Logf("获取到的机器ID: %s", machineID)
 }
+
+// TestIsVm 测试虚拟机/容器检测功能
+func TestIsVm(t *testing.T) {
+	isVm := IsVm()
+	t.Logf("当前环境是否为虚拟机/容器: %v", isVm)
+	// 不强制断言结果，因为测试环境可能是物理机或虚拟机
+}
+

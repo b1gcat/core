@@ -12,6 +12,7 @@ import (
 
 func init() {
 	getMachineID = linuxGetMachineID
+	isVm = linuxIsVm
 }
 
 // isContainer 检查当前是否运行在容器环境中
@@ -39,13 +40,93 @@ func isContainer() bool {
 		}
 	}
 
-	// 检查/proc/1/sched进程名
-	schedContent, err := os.ReadFile("/proc/1/sched")
+	return false
+}
+
+// linuxIsVm 检查Linux系统是否运行在虚拟机中
+func linuxIsVm() bool {
+	// 首先检查是否运行在容器中
+	if isContainer() {
+		return true
+	}
+
+	// 检查/proc/cpuinfo中的虚拟机特征
+	cpuInfo, err := os.ReadFile("/proc/cpuinfo")
 	if err == nil {
-		contentStr := string(schedContent)
-		// 容器中init进程通常不是systemd或init
-		if !strings.HasPrefix(contentStr, "systemd (") &&
-			!strings.HasPrefix(contentStr, "init (") {
+		contentStr := string(cpuInfo)
+		// 检查常见的VM CPU特征
+		vmCpuPatterns := []string{
+			"QEMU Virtual CPU",
+			"VMware Virtual CPU",
+			"VirtualBox CPU",
+			"Xen Virtual CPU",
+			"Hyper-V",
+			"KVM",
+			"Microsoft Hv",
+		}
+
+		for _, pattern := range vmCpuPatterns {
+			if strings.Contains(contentStr, pattern) {
+				return true
+			}
+		}
+	}
+
+	// 检查/proc/scsi/scsi中的虚拟机特征
+	scsiInfo, err := os.ReadFile("/proc/scsi/scsi")
+	if err == nil {
+		contentStr := string(scsiInfo)
+		// 检查常见的VM SCSI设备特征
+		vmScsiPatterns := []string{
+			"VMware",
+			"VirtualBox",
+			"QEMU",
+			"Xen",
+			"Hyper-V",
+		}
+
+		for _, pattern := range vmScsiPatterns {
+			if strings.Contains(contentStr, pattern) {
+				return true
+			}
+		}
+	}
+
+	// 检查/sys/class/dmi/id中的虚拟机特征
+	dmiPaths := []string{
+		"/sys/class/dmi/id/board_vendor",
+		"/sys/class/dmi/id/board_name",
+		"/sys/class/dmi/id/chassis_vendor",
+		"/sys/class/dmi/id/chassis_name",
+	}
+
+	vmDmiPatterns := []string{
+		"VMware",
+		"VirtualBox",
+		"QEMU",
+		"Xen",
+		"Hyper-V",
+		"Microsoft Hv",
+	}
+
+	for _, path := range dmiPaths {
+		content, err := os.ReadFile(path)
+		if err == nil {
+			contentStr := strings.TrimSpace(string(content))
+			for _, pattern := range vmDmiPatterns {
+				if strings.Contains(contentStr, pattern) {
+					return true
+				}
+			}
+		}
+	}
+
+	// 检查/proc/meminfo中的虚拟机特征
+	memInfo, err := os.ReadFile("/proc/meminfo")
+	if err == nil {
+		contentStr := string(memInfo)
+		// 检查是否包含Hyper-V内存管理特征
+		if strings.Contains(contentStr, "Hyper-V Memory") {
 			return true
 		}
 	}
