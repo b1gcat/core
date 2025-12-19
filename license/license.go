@@ -70,9 +70,9 @@ func New(opts ...WithOption) Config {
 
 // getNTPTime 从NTP服务器获取当前时间
 // 如果所有NTP服务器都不可用，返回系统时间
-func getNTPTime() time.Time {
+func (cfg *Config) getNTPTime() time.Time {
 	// 尝试从每个NTP服务器获取时间
-	for _, server := range globalConfig.ntpServers {
+	for _, server := range cfg.ntpServers {
 		ntpTime, err := getTimeFromNTP(server)
 		if err == nil {
 			return ntpTime
@@ -142,10 +142,10 @@ func SetExpiration(days int) {
 	globalConfig.expirationDays = days
 }
 
-// CheckLicense 检查授权是否有效
-// 如果当前时间超过编译时间加上授权天数，则执行过期回调并退出程序
-func CheckLicense() {
-	if globalConfig.expirationDays <= 0 {
+// Check 检查授权是否有效
+// 如果当前时间超过编译时间加上授权天数，则执行过期回调
+func (cfg *Config) Check() {
+	if cfg.expirationDays <= 0 {
 		// 授权天数未设置，默认为永久有效
 		return
 	}
@@ -159,17 +159,17 @@ func CheckLicense() {
 	}
 
 	// 获取当前时间（优先使用NTP时间）
-	now := getNTPTime()
+	now := cfg.getNTPTime()
 	buildTimeObj := time.Unix(buildSec, 0)
 
 	// 计算过期时间
-	expirationTime := buildTimeObj.AddDate(0, 0, globalConfig.expirationDays)
+	expirationTime := buildTimeObj.AddDate(0, 0, cfg.expirationDays)
 
 	// 检查是否过期
 	if now.After(expirationTime) {
 		// 执行过期回调（如果已设置）
-		if globalConfig.expirationCallback != nil {
-			globalConfig.expirationCallback()
+		if cfg.expirationCallback != nil {
+			cfg.expirationCallback()
 		}
 	}
 }

@@ -7,8 +7,11 @@ import (
 
 // TestNTPTime 获取NTP时间并验证其有效性
 func TestNTPTime(t *testing.T) {
+	// 创建默认配置实例
+	cfg := New()
+
 	// 获取NTP时间
-	ntpTime := getNTPTime()
+	ntpTime := cfg.getNTPTime()
 
 	// 获取系统时间
 	sysTime := time.Now()
