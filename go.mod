@@ -17,6 +17,7 @@ require (
 	github.com/mattn/go-tty v0.0.3 // indirect
 	github.com/pkg/term v1.2.0-beta.2 // indirect
 	github.com/rs/xid v1.4.0 // indirect
+	github.com/sirupsen/logrus v1.9.3 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect

@@ -1,9 +1,10 @@
 package c2
 
 import (
-	"io"
 	"net"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ProtocolType defines the supported protocol obfuscation types
@@ -51,7 +52,7 @@ type Config struct {
 	Interval   time.Duration
 	Protocol   ProtocolType
 	Domain     string
-	Logger     io.Writer // Logger to use for output
+	Logger     *logrus.Logger // Logger to use for output
 }
 
 // Option is a function type for configuring client/server

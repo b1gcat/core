@@ -59,9 +59,9 @@ func NewServer(opts ...Option) (*Server, error) {
 }
 
 // WithServerKey sets the encryption key for the server
-func WithServerKey(key []byte) Option {
+func WithServerKey(key string) Option {
 	return func(cfg *Config) {
-		cfg.Key = key
+		cfg.Key = []byte(key)
 	}
 }
 

