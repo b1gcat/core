@@ -2,140 +2,131 @@ package c2
 
 import (
 	"bytes"
-	"crypto/md5"
-	"encoding/hex"
+	"encoding/gob"
 	"testing"
+	"time"
+
+	"github.com/b1gcat/core/pki"
 )
 
-// Global test constants for easy modification
-var (
-	// Connection URL
-	testURL = ""
-	// Test key as byte slice: 000102130405f60708090a0b0c0d0e0f
-	testKey = []byte{}
-	// Authentication credentials
-	testUsername = ""
-	testPassword = ""
-)
-
-func TestC2Authentication(t *testing.T) {
-	// Create C2 client with all options including authentication
-	c2 := New(
-		WithURL(testURL),
-		WithKey(testKey),
-		WithUsername(testUsername),
-		WithPassword(testPassword),
-	)
-
-	// Verify all options were set correctly
-	if c2.URL != testURL {
-		t.Errorf("Expected URL to be %s, got %s", testURL, c2.URL)
+// TestMessageEncoding tests message encoding and decoding
+func TestMessageEncoding(t *testing.T) {
+	// Test message
+	msg := Message{
+		Type:       MessageTypeProbe,
+		Identifier: "test-client",
+		Payload:    []byte("test-payload"),
 	}
 
-	if len(c2.Key) != len(testKey) {
-		t.Errorf("Expected Key length to be %d, got %d", len(testKey), len(c2.Key))
+	// Encode message
+	var buf bytes.Buffer
+	en := gob.NewEncoder(&buf)
+	if err := en.Encode(msg); err != nil {
+		t.Errorf("Failed to encode message: %v", err)
+		return
 	}
 
-	for i, b := range testKey {
-		if c2.Key[i] != b {
-			t.Errorf("Expected Key[%d] to be %d, got %d", i, b, c2.Key[i])
-		}
+	// Decode message
+	var decodedMsg Message
+	dec := gob.NewDecoder(&buf)
+	if err := dec.Decode(&decodedMsg); err != nil {
+		t.Errorf("Failed to decode message: %v", err)
+		return
 	}
 
-	if c2.Username != testUsername {
-		t.Errorf("Expected Username to be %s, got %s", testUsername, c2.Username)
+	// Verify decoded message
+	if decodedMsg.Type != msg.Type {
+		t.Errorf("Expected message type %d, got %d", msg.Type, decodedMsg.Type)
 	}
-
-	if c2.Password != testPassword {
-		t.Errorf("Expected Password to be %s, got %s", testPassword, c2.Password)
+	if decodedMsg.Identifier != msg.Identifier {
+		t.Errorf("Expected message identifier %s, got %s", msg.Identifier, decodedMsg.Identifier)
+	}
+	if !bytes.Equal(decodedMsg.Payload, msg.Payload) {
+		t.Errorf("Expected message payload %s, got %s", string(msg.Payload), string(decodedMsg.Payload))
 	}
 }
 
-func TestC2DownloadWithAuth(t *testing.T) {
-	// Create C2 client with all options
-	c2 := New(
-		WithURL(testURL),
-		WithKey(testKey),
-		WithUsername(testUsername),
-		WithPassword(testPassword),
-	)
+// TestEncryption tests XTEA encryption and decryption
+func TestEncryption(t *testing.T) {
+	// Create a test key
+	key := []byte("1234567890123456")
 
-	// Test download functionality (this will make an actual HTTP request)
-	// Note: This test requires the server to be running at the specified URL
-	payload, err := c2.downloadPayload()
+	// Test data
+	testData := []byte("test command to execute")
+
+	// Encrypt data
+	encrypted, err := pki.Encrypt(key, testData)
 	if err != nil {
-		t.Fatalf("Failed to download payload: %v", err)
+		t.Errorf("Failed to encrypt data: %v", err)
+		return
 	}
 
-	// Verify payload is not empty
-	if len(payload) == 0 {
-		t.Error("Expected non-empty payload, got empty")
-	}
-
-	// Calculate and log MD5 hash of encrypted payload
-	encryptedHash := md5.Sum(payload)
-	encryptedHashStr := hex.EncodeToString(encryptedHash[:])
-	t.Logf("Encrypted payload MD5: %s", encryptedHashStr)
-	t.Logf("Encrypted payload length: %d bytes", len(payload))
-
-	// Test decryption
-	decryptedPayload, err := c2.decryptPayload(payload)
+	// Decrypt data
+	decrypted, err := pki.Decrypt(key, encrypted)
 	if err != nil {
-		t.Fatalf("Failed to decrypt payload: %v", err)
+		t.Errorf("Failed to decrypt data: %v", err)
+		return
 	}
 
-	// Verify decrypted payload is not empty
-	if len(decryptedPayload) == 0 {
-		t.Error("Expected non-empty decrypted payload, got empty")
-	}
-
-	// Split decrypted payload into type (first line) and actual payload (remaining)
-	var typePart, actualPayloadPart []byte
-	if newlineIndex := bytes.Index(decryptedPayload, []byte{'\n'}); newlineIndex != -1 {
-		typePart = decryptedPayload[:newlineIndex]
-		actualPayloadPart = decryptedPayload[newlineIndex+1:]
-	} else {
-		// If no newline found, treat entire payload as type (edge case)
-		typePart = decryptedPayload
-		actualPayloadPart = []byte{}
-	}
-
-	// Calculate and log MD5 hash of type part
-	typeHash := md5.Sum(typePart)
-	typeHashStr := hex.EncodeToString(typeHash[:])
-	t.Logf("Payload Type: %s", string(typePart))
-	t.Logf("Payload Type MD5: %s", typeHashStr)
-
-	// Calculate and log MD5 hash of actual payload part
-	actualPayloadHash := md5.Sum(actualPayloadPart)
-	actualPayloadHashStr := hex.EncodeToString(actualPayloadHash[:])
-	t.Logf("Actual Payload Length: %d bytes", len(actualPayloadPart))
-	t.Logf("Actual Payload MD5: %s", actualPayloadHashStr)
-
-	// Log a sample of the decrypted payload (first 100 bytes if available)
-	if len(decryptedPayload) > 0 {
-		maxSample := 100
-		if len(decryptedPayload) < maxSample {
-			maxSample = len(decryptedPayload)
-		}
-		t.Logf("Decrypted payload sample (first %d bytes): %q", maxSample, string(decryptedPayload[:maxSample]))
+	// Verify data
+	if !bytes.Equal(decrypted, testData) {
+		t.Errorf("Expected decrypted data %s, got %s", string(testData), string(decrypted))
 	}
 }
 
-func TestMD5Calculation(t *testing.T) {
-	// Test MD5 calculation functionality with sample data
-	sampleData := []byte("test payload data for MD5 calculation")
+// TestServerClientInteraction tests basic server-client interaction
+func TestServerClientInteraction(t *testing.T) {
+	// Create a test key
+	key := []byte("1234567890123456")
 
-	// Calculate MD5
-	hash := md5.Sum(sampleData)
-	hashStr := hex.EncodeToString(hash[:])
-
-	// Log the actual hash (useful for debugging)
-	t.Logf("Sample data MD5: %s", hashStr)
-
-	// This test just verifies that MD5 calculation doesn't panic
-	// and produces a valid 32-character hex string
-	if len(hashStr) != 32 {
-		t.Errorf("Expected MD5 hash to be 32 characters long, got %d", len(hashStr))
+	// Create server
+	server, err := NewServer(
+		WithServerKey(key),
+		WithServerAddress("0.0.0.0:9002"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
 	}
+	defer server.Stop()
+
+	// Start server (includes console processing automatically)
+	go server.Start()
+
+	// Give server time to start
+	time.Sleep(500 * time.Millisecond)
+
+	// Create client
+	client, err := NewClient(
+		WithClientKey(key),
+		WithClientAddress("localhost:9002"),
+		WithClientIdentifier("test-client-001"),
+		WithClientInterval(1*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer client.Stop()
+
+	// Start client
+	go client.Start()
+
+	// Wait for client to send probe
+	time.Sleep(2 * time.Second)
+
+	// Check if client is registered on server
+	server.clientsMu.RLock()
+	clientInfo, exists := server.clients["test-client-001"]
+	server.clientsMu.RUnlock()
+
+	if !exists {
+		t.Error("Expected client to be registered on server")
+		return
+	}
+
+	if clientInfo.Identifier != "test-client-001" {
+		t.Errorf("Expected client identifier 'test-client-001', got '%s'", clientInfo.Identifier)
+	}
+
+	// Give client time to process
+	time.Sleep(1 * time.Second)
 }

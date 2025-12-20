@@ -1,6 +1,7 @@
 package license
 
 import (
+	"strconv"
 	"testing"
 	"time"
 )
@@ -69,4 +70,96 @@ func TestNTPServerList(t *testing.T) {
 	for i, server := range globalConfig.ntpServers {
 		t.Logf("Server %d: %s", i+1, server)
 	}
+}
+
+// TestGetRemainingTime 测试获取剩余授权时间的功能
+func TestGetRemainingTime(t *testing.T) {
+	// Save original buildTime to restore after test
+	originalBuildTime := buildTime
+	defer func() {
+		buildTime = originalBuildTime
+	}()
+
+	// Test 1: Permanent license (expirationDays <= 0)
+	t.Run("PermanentLicense", func(t *testing.T) {
+		cfg := New(WithExpiration(0))
+		remaining, err := cfg.GetRemainingTime()
+		if err != nil {
+			t.Errorf("Expected no error for permanent license, got %v", err)
+		}
+		if remaining != 0 {
+			t.Errorf("Expected 0 remaining time for permanent license, got %v", remaining)
+		}
+	})
+
+	// Test 2: Valid remaining time (set buildTime to 1 day ago, expiration 30 days)
+	t.Run("ValidRemainingTime", func(t *testing.T) {
+		// Set buildTime to 24 hours ago
+		twoDaysAgo := time.Now().Add(-24 * time.Hour).Unix()
+		buildTime = strconv.FormatInt(twoDaysAgo, 10)
+
+		cfg := New(WithExpiration(30))
+		remaining, err := cfg.GetRemainingTime()
+		if err != nil {
+			t.Errorf("Expected no error, got %v", err)
+		}
+
+		// Should be approximately 29 days remaining
+		expectedRemaining := 29 * 24 * time.Hour
+		diff := absDuration(remaining - expectedRemaining)
+		if diff > 5*time.Minute { // Allow 5 minutes tolerance for NTP time variations
+			t.Errorf("Expected approximately %v remaining time, got %v", expectedRemaining, remaining)
+		}
+
+		t.Logf("Valid license remaining time: %v", remaining)
+	})
+
+	// Test 3: Expired license
+	t.Run("ExpiredLicense", func(t *testing.T) {
+		// Set buildTime to 31 days ago, expiration 30 days
+		thirtyOneDaysAgo := time.Now().Add(-31 * 24 * time.Hour).Unix()
+		buildTime = strconv.FormatInt(thirtyOneDaysAgo, 10)
+
+		cfg := New(WithExpiration(30))
+		remaining, err := cfg.GetRemainingTime()
+		if err != nil {
+			t.Errorf("Expected no error for expired license, got %v", err)
+		}
+		if remaining >= 0 {
+			t.Errorf("Expected negative remaining time for expired license, got %v", remaining)
+		}
+
+		// Should be approximately 1 day expired
+		expectedExpired := -24 * time.Hour
+		diff := absDuration(remaining - expectedExpired)
+		if diff > 5*time.Minute { // Allow 5 minutes tolerance for NTP time variations
+			t.Errorf("Expected approximately %v expired time, got %v", expectedExpired, remaining)
+		}
+
+		t.Logf("Expired license time: %v", remaining)
+	})
+
+	// Test 4: Invalid buildTime
+	t.Run("InvalidBuildTime", func(t *testing.T) {
+		buildTime = "invalid_time"
+
+		cfg := New(WithExpiration(30))
+		remaining, err := cfg.GetRemainingTime()
+		if err == nil {
+			t.Error("Expected error for invalid buildTime, got nil")
+		}
+		if remaining != 0 {
+			t.Errorf("Expected 0 remaining time for invalid buildTime, got %v", remaining)
+		}
+
+		t.Logf("Expected error occurred for invalid buildTime: %v", err)
+	})
+}
+
+// absDuration returns the absolute value of a duration
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
 }

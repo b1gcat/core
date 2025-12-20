@@ -4,7 +4,16 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"runtime"
 )
+
+func Exec(cmd string) (*string, error) {
+	if runtime.GOOS == "windows" {
+		return ExecWinshell(cmd)
+	} else {
+		return ExecUnix(cmd)
+	}
+}
 
 func ExecPowershellFile(file string) (*string, error) {
 	return RunExec(exec.Command("PowerShell", "-ExecutionPolicy", "Bypass", "-File", file))
