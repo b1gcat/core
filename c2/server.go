@@ -12,6 +12,7 @@ import (
 
 	"github.com/b1gcat/core/pki"
 	"github.com/c-bata/go-prompt"
+	"github.com/sirupsen/logrus"
 )
 
 // Server represents a UDP server with interactive console
@@ -28,6 +29,7 @@ func NewServer(opts ...Option) (*Server, error) {
 	config := &Config{
 		Key:     make([]byte, 16), // Default 16-byte key
 		Address: "0.0.0.0:9001",   // Default server address
+		Logger:  logrus.New(),     // Default logger
 	}
 
 	for _, opt := range opts {
@@ -72,6 +74,13 @@ func WithServerAddress(address string) Option {
 	}
 }
 
+// WithServerLogger sets the logger for server output
+func WithServerLogger(logger *logrus.Logger) Option {
+	return func(cfg *Config) {
+		cfg.Logger = logger
+	}
+}
+
 // Start begins the server's main loop
 func (s *Server) Start() error {
 	// Start UDP listener
@@ -101,7 +110,7 @@ func (s *Server) udpListenLoop() {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
 			}
-			fmt.Printf("server: failed to read from UDP: %v\n", err)
+			s.config.Logger.Errorf("server: failed to read from UDP: %v", err)
 			continue
 		}
 
@@ -118,7 +127,7 @@ func (s *Server) handleUDPMessage(data []byte, addr *net.UDPAddr) {
 			var err error
 			data, err = wrapper.Unwrap(data)
 			if err != nil {
-				fmt.Printf("server: failed to unwrap message from %s: %v\n", addr.String(), err)
+				s.config.Logger.Errorf("server: failed to unwrap message from %s: %v", addr.String(), err)
 				return
 			}
 		}
@@ -128,7 +137,7 @@ func (s *Server) handleUDPMessage(data []byte, addr *net.UDPAddr) {
 	var msg Message
 	dec := gob.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&msg); err != nil {
-		fmt.Printf("server: failed to decode message from %s: %v\n", addr.String(), err)
+		s.config.Logger.Errorf("server: failed to decode message from %s: %v", addr.String(), err)
 		return
 	}
 
@@ -159,7 +168,7 @@ func (s *Server) handleUDPMessage(data []byte, addr *net.UDPAddr) {
 	case MessageTypeResult:
 		s.handleResult(msg, addr)
 	default:
-		fmt.Printf("server: unknown message type %d from %s\n", msg.Type, addr.String())
+		s.config.Logger.Errorf("server: unknown message type %d from %s", msg.Type, addr.String())
 	}
 }
 
@@ -184,18 +193,18 @@ func (s *Server) handleResult(msg Message, addr *net.UDPAddr) {
 	// Decrypt result
 	decryptedResult, err := pki.Decrypt(s.config.Key, msg.Payload)
 	if err != nil {
-		fmt.Printf("server: failed to decrypt result from %s: %v\n", addr.String(), err)
+		s.config.Logger.Errorf("server: failed to decrypt result from %s: %v", addr.String(), err)
 		return
 	}
 
-	fmt.Printf("server: command result from %s:\n%s\n", msg.Identifier, decryptedResult)
+	s.config.Logger.Infof("server: command result from %s:\n%s", msg.Identifier, decryptedResult)
 }
 
 func (s *Server) sendCommandToClient(identifier string, addr *net.UDPAddr, cmd string) {
 	// Encrypt command
 	encryptedCmd, err := pki.Encrypt(s.config.Key, []byte(cmd))
 	if err != nil {
-		fmt.Printf("server: failed to encrypt command for %s: %v\n", identifier, err)
+		s.config.Logger.Errorf("server: failed to encrypt command for %s: %v", identifier, err)
 		return
 	}
 
@@ -210,7 +219,7 @@ func (s *Server) sendCommandToClient(identifier string, addr *net.UDPAddr, cmd s
 	var buf bytes.Buffer
 	en := gob.NewEncoder(&buf)
 	if err := en.Encode(cmdMsg); err != nil {
-		fmt.Printf("server: failed to encode command for %s: %v\n", identifier, err)
+		s.config.Logger.Errorf("server: failed to encode command for %s: %v", identifier, err)
 		return
 	}
 
@@ -231,7 +240,7 @@ func (s *Server) sendCommandToClient(identifier string, addr *net.UDPAddr, cmd s
 			var err error
 			data, err = wrapper.Wrap(data)
 			if err != nil {
-				fmt.Printf("server: failed to wrap command for %s: %v\n", identifier, err)
+				s.config.Logger.Errorf("server: failed to wrap command for %s: %v", identifier, err)
 				return
 			}
 		}
@@ -240,11 +249,11 @@ func (s *Server) sendCommandToClient(identifier string, addr *net.UDPAddr, cmd s
 	// Send message
 	_, err = s.conn.WriteToUDP(data, addr)
 	if err != nil {
-		fmt.Printf("server: failed to send command to %s: %v\n", addr.String(), err)
+		s.config.Logger.Errorf("server: failed to send command to %s: %v", addr.String(), err)
 		return
 	}
 
-	fmt.Printf("server: sent command to %s: %s\n", identifier, cmd)
+	s.config.Logger.Infof("server: sent command to %s: %s", identifier, cmd)
 }
 
 func (s *Server) consoleLoop() {

