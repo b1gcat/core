@@ -61,7 +61,7 @@ func (h *customHook) OnConnect(client *mqtt.Client, packet packets.Packet) error
 		IPAddress:  ipAddress,
 		Connected:  true,
 		LastSeen:   time.Now().Unix(),
-		Metadata:   make(map[string]string),
+		Metadata:   make(map[string]any),
 		PolicyInfo: nil,
 	}
 

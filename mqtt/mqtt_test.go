@@ -77,7 +77,7 @@ func testServerClientInteraction(t *testing.T) {
 	clientConfig := &ClientConfig{
 		ClientID:   "test-client-1",
 		ClientName: "Test Client",
-		Metadata: map[string]string{
+		Metadata: map[string]any{
 			"app":     "test",
 			"version": "1.0.0",
 		},
@@ -249,7 +249,7 @@ func testClientInfoCollection(t *testing.T, broker *Broker) {
 	clientConfig := &ClientConfig{
 		ClientID:   "info-client",
 		ClientName: "Info Client",
-		Metadata: map[string]string{
+		Metadata: map[string]any{
 			"app":     "info-collector",
 			"version": "1.0.0",
 			"os":      "linux",
@@ -323,7 +323,7 @@ func Example() {
 	clientConfig := &ClientConfig{
 		ClientID:   "example-client",
 		ClientName: "Example Client",
-		Metadata: map[string]string{
+		Metadata: map[string]any{
 			"app":     "example-app",
 			"version": "1.0.0",
 		},

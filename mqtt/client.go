@@ -26,7 +26,7 @@ type ClientConfig struct {
 	ClientID      string
 	ClientName    string
 	ClientType    string
-	Metadata      map[string]string
+	Metadata      map[string]any
 }
 
 // NewClient creates a new MQTT client instance
@@ -37,7 +37,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 			ClientID:      fmt.Sprintf("client-%s", uuid.New().String()),
 			ClientName:    "mqtt-client",
 			ClientType:    "default",
-			Metadata:      make(map[string]string),
+			Metadata:      make(map[string]any),
 		}
 	}
 
@@ -46,7 +46,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 	}
 
 	if config.Metadata == nil {
-		config.Metadata = make(map[string]string)
+		config.Metadata = make(map[string]any)
 	}
 
 	// Set default broker address if not provided
