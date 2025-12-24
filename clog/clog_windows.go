@@ -9,9 +9,9 @@ import (
 
 var eventLogHandle *eventlog.Log
 
-func initEventLog() {
+func initEventLog(sourceName string) {
 	// 注册事件源
-	log, err := eventlog.Open("clog")
+	log, err := eventlog.Open(sourceName)
 	if err == nil {
 		eventLogHandle = log
 	}

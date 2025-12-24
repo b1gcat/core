@@ -5,7 +5,7 @@ package clog
 import "github.com/sirupsen/logrus"
 
 // 非Windows平台的空实现
-func initEventLog() {}
+func initEventLog(sourceName string) {}
 
 func writeToEventLog(level logrus.Level, message string) {}
 
