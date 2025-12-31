@@ -146,6 +146,8 @@ func linuxGetMachineID() (string, error) {
 		"/etc/machine-id",
 		"/var/lib/dbus/machine-id",
 		"/sys/devices/virtual/dmi/id/product_uuid", // 添加对DMI product_uuid的支持
+		"/sys/class/net/br-lan/address",
+		"/sys/class/net/eth0/address",
 	}
 
 	// 处理需要计算MD5的文件

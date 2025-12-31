@@ -27,11 +27,13 @@ type Option func(*Options)
 // Broker represents the MQTT broker instance
 type Broker struct {
 	*mqtt.Server
-	config       *Options
-	Policy       *Policy
-	Clients      map[string]*ClientInfo
-	clientsMutex sync.RWMutex
-	ctx          context.Context
+	config        *Options
+	Policy        *Policy            // 全局策略
+	GroupPolicies map[string]*Policy // 组策略，key为组名
+	Clients       map[string]*ClientInfo
+	clientsMutex  sync.RWMutex
+	policiesMutex sync.RWMutex // 保护GroupPolicies的互斥锁
+	ctx           context.Context
 }
 
 // customHook implements the mqtt.Hook interface to listen for client events
@@ -63,22 +65,21 @@ func (h *customHook) OnConnect(client *mqtt.Client, packet packets.Packet) error
 		LastSeen:   time.Now().Unix(),
 		Metadata:   make(map[string]any),
 		PolicyInfo: nil,
+		Group:      DefaultGroup, // 设置默认组
 	}
 
 	h.broker.clientsMutex.Lock()
 	h.broker.Clients[clientID] = clientInfo
 	h.broker.clientsMutex.Unlock()
 
-	fmt.Printf("Client connected: %s (%s)\n", clientID, ipAddress)
+	fmt.Printf("Client connected: %s (%s), group: %s\n", clientID, ipAddress, DefaultGroup)
 
-	// If policy exists, push it to the newly connected client (条件1：哪个客户端连上就推送)
-	if h.broker.Policy != nil {
-		go func() {
-			if err := h.broker.PushPolicyToClient(clientID); err != nil {
-				fmt.Printf("Failed to push policy to client %s: %v\n", clientID, err)
-			}
-		}()
-	}
+	// Push appropriate policy (group-specific or global)
+	go func() {
+		if err := h.broker.PushPolicyToClient(clientID); err != nil {
+			fmt.Printf("Failed to push policy to client %s: %v\n", clientID, err)
+		}
+	}()
 	return nil
 }
 
@@ -164,10 +165,11 @@ func NewBroker(opts ...Option) (*Broker, error) {
 	}
 
 	broker := &Broker{
-		Server:  s,
-		config:  options,
-		Clients: make(map[string]*ClientInfo),
-		ctx:     brokerCtx,
+		Server:        s,
+		config:        options,
+		Clients:       make(map[string]*ClientInfo),
+		GroupPolicies: make(map[string]*Policy),
+		ctx:           brokerCtx,
 	}
 
 	// Add custom hook for client events
@@ -231,22 +233,73 @@ func (b *Broker) CreatePolicy(name, description string, settings map[string]any)
 	return policy
 }
 
-// SetPolicy sets the current policy and pushes it to all clients
+// SetPolicy sets the current global policy and pushes it to all clients
 func (b *Broker) SetPolicy(policy *Policy) error {
+	// 如果是组策略，调用SetGroupPolicy
+	if policy.GroupID != "" {
+		return b.SetGroupPolicy(policy.GroupID, policy)
+	}
+
+	b.policiesMutex.Lock()
 	b.Policy = policy
+	b.policiesMutex.Unlock()
 
 	// Push to all clients (主动触发条件)
 	return b.PushPolicyToAllClients()
 }
 
-// PushPolicyToClient pushes the current policy to a specific client
+// SetGroupPolicy sets the policy for a specific group and pushes it to all clients in that group
+func (b *Broker) SetGroupPolicy(groupID string, policy *Policy) error {
+	if groupID == "" {
+		return fmt.Errorf("group ID cannot be empty")
+	}
+
+	// 设置策略的GroupID
+	policy.GroupID = groupID
+
+	b.policiesMutex.Lock()
+	b.GroupPolicies[groupID] = policy
+	b.policiesMutex.Unlock()
+
+	// Push to all clients in the group
+	return b.PushPolicyToGroupClients(groupID)
+}
+
+// PushPolicyToClient pushes the appropriate policy (group-specific or global) to a specific client
 func (b *Broker) PushPolicyToClient(clientID string) error {
-	if b.Policy == nil {
-		return fmt.Errorf("no policy set")
+	// Get client info to determine group
+	clientInfo, exists := b.GetClientInfo(clientID)
+	if !exists {
+		return fmt.Errorf("client not found: %s", clientID)
+	}
+
+	// Determine which policy to use: group-specific first, then global
+	var policy *Policy
+	var policyName string
+
+	if clientInfo.Group != "" {
+		// Check if there's a group-specific policy
+		b.policiesMutex.RLock()
+		groupPolicy, exists := b.GroupPolicies[clientInfo.Group]
+		b.policiesMutex.RUnlock()
+
+		if exists {
+			policy = groupPolicy
+			policyName = groupPolicy.Name
+		}
+	}
+
+	// If no group policy, use global policy
+	if policy == nil {
+		if b.Policy == nil {
+			return fmt.Errorf("no policy set for client %s", clientID)
+		}
+		policy = b.Policy
+		policyName = b.Policy.Name
 	}
 
 	// Marshal policy to JSON
-	payload, err := json.Marshal(b.Policy)
+	payload, err := json.Marshal(policy)
 	if err != nil {
 		return fmt.Errorf("failed to marshal policy: %w", err)
 	}
@@ -273,18 +326,41 @@ func (b *Broker) PushPolicyToClient(clientID string) error {
 		return fmt.Errorf("failed to send policy to client: %w", err)
 	}
 
-	fmt.Printf("Pushed policy %s to client %s\n", b.Policy.Name, clientID)
+	fmt.Printf("Pushed policy %s to client %s (group: %s)\n", policyName, clientID, clientInfo.Group)
 	return nil
 }
 
-// PushPolicyToAllClients pushes the current policy to all connected clients
+// PushPolicyToAllClients pushes the appropriate policy to all connected clients
 func (b *Broker) PushPolicyToAllClients() error {
-	if b.Policy == nil {
-		return fmt.Errorf("no policy set")
+	// Get all connected clients and send the appropriate policy
+	b.clientsMutex.RLock()
+	defer b.clientsMutex.RUnlock()
+
+	for clientID, clientInfo := range b.Clients {
+		if clientInfo.Connected {
+			if err := b.PushPolicyToClient(clientID); err != nil {
+				fmt.Printf("Failed to send policy to client %s: %v\n", clientID, err)
+				// Continue with other clients
+			}
+		}
+	}
+
+	fmt.Printf("Pushed policies to all connected clients\n")
+	return nil
+}
+
+// PushPolicyToGroupClients pushes the group policy to all clients in the specified group
+func (b *Broker) PushPolicyToGroupClients(groupID string) error {
+	b.policiesMutex.RLock()
+	policy, exists := b.GroupPolicies[groupID]
+	b.policiesMutex.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("no policy set for group %s", groupID)
 	}
 
 	// Marshal policy to JSON
-	payload, err := json.Marshal(b.Policy)
+	payload, err := json.Marshal(policy)
 	if err != nil {
 		return fmt.Errorf("failed to marshal policy: %w", err)
 	}
@@ -300,16 +376,16 @@ func (b *Broker) PushPolicyToAllClients() error {
 		Payload:   payload,
 	}
 
-	// Get all connected clients and send the policy
+	// Get all connected clients in the group and send the policy
 	b.clientsMutex.RLock()
 	for clientID, clientInfo := range b.Clients {
-		if clientInfo.Connected {
+		if clientInfo.Connected && clientInfo.Group == groupID {
 			// Get client by ID
 			client, exists := b.Server.Clients.Get(clientID)
 			if exists {
-				// Send to each connected client
+				// Send to each connected client in the group
 				if err := b.Server.InjectPacket(client, packet); err != nil {
-					fmt.Printf("Failed to send policy to client %s: %v\n", clientID, err)
+					fmt.Printf("Failed to send group policy to client %s: %v\n", clientID, err)
 					// Continue with other clients
 				}
 			}
@@ -317,7 +393,7 @@ func (b *Broker) PushPolicyToAllClients() error {
 	}
 	b.clientsMutex.RUnlock()
 
-	fmt.Printf("Pushed policy %s to all connected clients\n", b.Policy.Name)
+	fmt.Printf("Pushed group policy %s to all clients in group %s\n", policy.Name, groupID)
 	return nil
 }
 
@@ -343,6 +419,31 @@ func (b *Broker) GetClientInfo(clientID string) (*ClientInfo, bool) {
 
 	clientInfo, exists := b.Clients[clientID]
 	return clientInfo, exists
+}
+
+// SetClientGroup changes the group of a client and pushes the appropriate policy
+func (b *Broker) SetClientGroup(clientID string, groupID string) error {
+	if groupID == "" {
+		return fmt.Errorf("group ID cannot be empty")
+	}
+
+	b.clientsMutex.Lock()
+	clientInfo, exists := b.Clients[clientID]
+	if !exists {
+		b.clientsMutex.Unlock()
+		return fmt.Errorf("client not found: %s", clientID)
+	}
+
+	// 更新客户端组
+	oldGroup := clientInfo.Group
+	clientInfo.Group = groupID
+	b.Clients[clientID] = clientInfo
+	b.clientsMutex.Unlock()
+
+	fmt.Printf("Changed client %s group from %s to %s\n", clientID, oldGroup, groupID)
+
+	// 向客户端推送新组的策略
+	return b.PushPolicyToClient(clientID)
 }
 
 // GetAllClients returns information about all clients

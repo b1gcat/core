@@ -17,7 +17,11 @@ type Policy struct {
 	Description string                 `json:"description"`
 	Settings    map[string]interface{} `json:"settings"`
 	Timestamp   int64                  `json:"timestamp"`
+	GroupID     string                 `json:"group_id,omitempty"` // 组ID，为空表示全局策略
 }
+
+// DefaultGroup is the default group for clients
+const DefaultGroup = "default"
 
 // ClientInfo represents the information collected from clients
 type ClientInfo struct {
@@ -27,6 +31,7 @@ type ClientInfo struct {
 	LastSeen   int64          `json:"last_seen"`
 	Metadata   map[string]any `json:"metadata"`
 	PolicyInfo *Policy        `json:"policy_info,omitempty"`
+	Group      string         `json:"group,omitempty"` // 客户端所属组
 }
 
 // SystemCommand represents commands sent from server to clients
