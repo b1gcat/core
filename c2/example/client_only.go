@@ -14,7 +14,7 @@ func main() {
 	protocolType := c2.ProtocolType("none") // Options: none, dns, ntp
 	domain := "example.com"                 // Domain for DNS protocol
 	identifier := "test-client"             // Client identifier
-	address := "localhost:9003"             // Server address
+	address := "localhost:123"              // Server address
 	interval := 2 * time.Second             // Probe interval
 
 	// Create client

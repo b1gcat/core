@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-
-
 // ProtocolWrapper defines the interface for protocol obfuscation wrappers
 type ProtocolWrapper interface {
 	// Wrap wraps the payload in the protocol
@@ -145,6 +143,7 @@ func (w *DNSWrapper) Unwrap(data []byte) ([]byte, error) {
 	}
 
 	// Extract payload from answer section
+	var allPayloads []byte
 	for i := 0; i < int(header.ANCount); i++ {
 		// Skip domain name
 		if pos >= len(data) {
@@ -181,8 +180,16 @@ func (w *DNSWrapper) Unwrap(data []byte) ([]byte, error) {
 		if pos+int(dataLen) > len(data) {
 			return nil, fmt.Errorf("dns: incomplete packet")
 		}
+
 		payload := data[pos : pos+int(dataLen)]
-		return payload, nil
+
+		// Concatenate all payloads
+		allPayloads = append(allPayloads, payload...)
+	}
+
+	// If we have any payloads, return them
+	if len(allPayloads) > 0 {
+		return allPayloads, nil
 	}
 
 	return nil, fmt.Errorf("dns: no answer section found")
@@ -304,16 +311,22 @@ func GetProtocolWrapper(protocol ProtocolType, params ...string) ProtocolWrapper
 
 // DetectProtocol automatically detects the protocol type from the data
 func DetectProtocol(data []byte) ProtocolType {
-	// Try DNS first
+	// Try DNS first with stricter validation
 	dns := NewDNSWrapper("")
 	if dns.IsValid(data) {
-		return ProtocolDNS
+		// Try to unwrap to confirm it's a valid DNS packet
+		if _, err := dns.Unwrap(data); err == nil {
+			return ProtocolDNS
+		}
 	}
 
-	// Try NTP
+	// Try NTP with stricter validation
 	ntp := NewNTPWrapper()
 	if ntp.IsValid(data) {
-		return ProtocolNTP
+		// Try to unwrap to confirm it's a valid NTP packet
+		if _, err := ntp.Unwrap(data); err == nil {
+			return ProtocolNTP
+		}
 	}
 
 	return ProtocolNone

