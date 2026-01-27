@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"strconv"
+
+	_0trust "github.com/b1gcat/core/0trust"
 )
 
 func main() {
@@ -29,7 +31,7 @@ func main() {
 		}
 	}
 
-	server := NewServer(udpPort, protectPort, secret, tcpMSS)
+	server := _0trust.NewServer(udpPort, protectPort, secret, tcpMSS)
 	if err := server.Init(); err != nil {
 		log.Fatalf("server init failed: %v", err)
 	}

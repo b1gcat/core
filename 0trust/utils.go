@@ -1,4 +1,4 @@
-package main
+package _0trust
 
 import (
 	"crypto/hmac"

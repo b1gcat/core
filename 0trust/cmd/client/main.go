@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	_0trust "github.com/b1gcat/core/0trust"
 )
 
 func main() {
@@ -18,7 +20,7 @@ func main() {
 	serverAddr := os.Args[1]
 	secret := []byte(os.Args[2])
 
-	client := NewClient(serverAddr, secret)
+	client := _0trust.NewClient(serverAddr, secret)
 	if err := client.Authenticate(); err != nil {
 		log.Fatalf("Authentication failed: %v", err)
 	}

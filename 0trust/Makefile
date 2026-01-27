@@ -9,39 +9,33 @@ LDFLAGS := -w -s
 # 输出目录
 OUTPUT_DIR := bin
 
-# 源文件
-SERVER_SRCS := server.go utils.go types.go main_server.go
-CLIENT_SRCS := client.go utils.go types.go main_client.go
-
 # 默认目标
 all: server client
 
 # 编译服务端（仅Linux）
-server: $(SERVER_SRCS)
+server:
 	@mkdir -p $(OUTPUT_DIR)
-	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(OUTPUT_DIR)/$(SERVER_BINARY) $(SERVER_SRCS)
+	GOOS=linux GOARCH=amd64 go build -o $(OUTPUT_DIR)/$(SERVER_BINARY) ./cmd/server
 
 # 编译客户端（多平台）
 client: client-linux client-windows client-darwin
 
-client-linux: $(CLIENT_SRCS)
+client-linux:
 	@mkdir -p $(OUTPUT_DIR)
-	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(OUTPUT_DIR)/$(CLIENT_BINARY)-linux $(CLIENT_SRCS)
+	GOOS=linux GOARCH=amd64 go build -o $(OUTPUT_DIR)/$(CLIENT_BINARY)-linux ./cmd/client
 
-client-windows: $(CLIENT_SRCS)
+client-windows:
 	@mkdir -p $(OUTPUT_DIR)
-	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(OUTPUT_DIR)/$(CLIENT_BINARY)-windows.exe $(CLIENT_SRCS)
+	GOOS=windows GOARCH=amd64 go build -o $(OUTPUT_DIR)/$(CLIENT_BINARY)-windows.exe ./cmd/client
 
-client-darwin: $(CLIENT_SRCS)
+client-darwin:
 	@mkdir -p $(OUTPUT_DIR)
-	GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(OUTPUT_DIR)/$(CLIENT_BINARY)-darwin $(CLIENT_SRCS)
+	GOOS=darwin GOARCH=amd64 go build -o $(OUTPUT_DIR)/$(CLIENT_BINARY)-darwin ./cmd/client
 
 # 清理
 clean:
 	rm -rf $(OUTPUT_DIR)
 
 # 安装服务端（Linux）
-install: server
-	cp $(OUTPUT_DIR)/$(SERVER_BINARY) /usr/local/bin/
 
 .PHONY: all server client client-linux client-windows client-darwin clean install
