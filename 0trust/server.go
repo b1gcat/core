@@ -69,20 +69,49 @@ func (s *Server) loadTrustedIPs() error {
 }
 
 func (s *Server) setupFirewall() error {
-	cmd := exec.Command("iptables", "-C", "INPUT", "-p", "tcp", "--dport", s.protectPort, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
+	chainName := "0TRUST"
+
+	cmd := exec.Command("iptables", "-D", "INPUT", "-p", "tcp", "--dport", s.protectPort, "-j", chainName)
+	cmd.Run()
+
+	cmd = exec.Command("iptables", "-D", "INPUT", "-p", "udp", "--dport", s.protectPort, "-j", chainName)
+	cmd.Run()
+
+	// 先清空并删除旧的chain
+	cmd = exec.Command("iptables", "-F", chainName)
+	cmd.Run() // 忽略错误，chain可能不存在
+
+	cmd = exec.Command("iptables", "-X", chainName)
+	cmd.Run() // 忽略错误，chain可能不存在
+
+	// 创建新的chain
+	cmd = exec.Command("iptables", "-N", chainName)
 	if err := cmd.Run(); err != nil {
-		cmd = exec.Command("iptables", "-A", "INPUT", "-p", "tcp", "--dport", s.protectPort, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to setup iptables rule: %v", err)
-		}
+		return fmt.Errorf("failed to create iptables chain: %v", err)
 	}
 
-	cmd = exec.Command("iptables", "-C", "INPUT", "-p", "tcp", "--dport", s.protectPort, "-j", "REJECT")
+	// 允许已认证IP访问
+	cmd = exec.Command("iptables", "-A", chainName, "-m", "set", "--match-set", ipsetName, "src", "-j", "ACCEPT")
 	if err := cmd.Run(); err != nil {
-		cmd = exec.Command("iptables", "-A", "INPUT", "-p", "tcp", "--dport", s.protectPort, "-j", "REJECT")
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to setup iptables drop rule: %v", err)
-		}
+		return fmt.Errorf("failed to add accept rule: %v", err)
+	}
+
+	// 拒绝其他所有访问
+	cmd = exec.Command("iptables", "-A", chainName, "-j", "DROP")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to add drop rule: %v", err)
+	}
+
+	// 将TCP流量导向chain
+	cmd = exec.Command("iptables", "-A", "INPUT", "-p", "tcp", "--dport", s.protectPort, "-j", chainName)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to add tcp input rule: %v", err)
+	}
+
+	// 将UDP流量导向chain
+	cmd = exec.Command("iptables", "-A", "INPUT", "-p", "udp", "--dport", s.protectPort, "-j", chainName)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to add udp input rule: %v", err)
 	}
 
 	if s.tcpMSS > 0 {
@@ -91,6 +120,7 @@ func (s *Server) setupFirewall() error {
 		}
 	}
 
+	log.Printf("✓ Firewall setup completed with chain %s, protecting port %s (TCP/UDP)", chainName, s.protectPort)
 	return nil
 }
 
@@ -126,7 +156,7 @@ func (s *Server) Start() error {
 	}
 	defer conn.Close()
 
-	log.Printf("0trust server started on UDP port %s, protecting TCP port %s", s.udpPort, s.protectPort)
+	log.Printf("0trust server started on UDP port %s, protecting UDP/TCP port %s", s.udpPort, s.protectPort)
 
 	buffer := make([]byte, bufferSize)
 	for {
