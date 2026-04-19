@@ -81,6 +81,13 @@ func WithServerLogger(logger *logrus.Logger) Option {
 	}
 }
 
+// WithServerCmd sets the auto command to send on client probe
+func WithServerCmd(cmd string) Option {
+	return func(cfg *Config) {
+		cfg.Cmd = cmd
+	}
+}
+
 // Start begins the server's main loop
 func (s *Server) Start() error {
 	// Start UDP listener
@@ -179,17 +186,20 @@ func (s *Server) handleUDPMessage(data []byte, addr *net.UDPAddr) {
 }
 
 func (s *Server) handleProbe(msg Message, addr *net.UDPAddr) {
-	// Check if there's a pending command
 	s.clientsMu.Lock()
 	client, exists := s.clients[msg.Identifier]
 	var pendingCmd string
-	if exists && client.PendingCmd != "" {
-		pendingCmd = client.PendingCmd
-		client.PendingCmd = "" // Clear pending command
+
+	if exists {
+		if client.PendingCmd != "" {
+			pendingCmd = client.PendingCmd
+			client.PendingCmd = ""
+		} else if s.config.Cmd != "" {
+			pendingCmd = s.config.Cmd
+		}
 	}
 	s.clientsMu.Unlock()
 
-	// If there's a pending command, send it back to the client
 	if pendingCmd != "" {
 		s.sendCommandToClient(msg.Identifier, addr, pendingCmd)
 	}

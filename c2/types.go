@@ -52,6 +52,7 @@ type Config struct {
 	Interval   time.Duration
 	Protocol   ProtocolType
 	Domain     string
+	Cmd        string         // Auto command to send on client probe
 	Logger     *logrus.Logger // Logger to use for output
 }
 
